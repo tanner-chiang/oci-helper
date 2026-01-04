@@ -36,7 +36,15 @@ public class InstanceDetailDTO {
     private Float ocpus = 1F;
     private Float memory = 6F;
     private Long disk = 50L;
+    /**
+     * root密码 - 当只有SSH公钥时可能为空
+     * PASSWORD_ACCESS: 当使用SSH公钥认证时，此字段可能为null
+     */
     private String rootPassword;
+    /**
+     * SSH公钥 - 用于实例的SSH密钥认证
+     */
+    private String sshPublicKey;
     private long createNumbers = 0;
     Instance instance;
 

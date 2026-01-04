@@ -217,7 +217,8 @@ public class OracleInstanceFetcher implements Closeable {
                                     user.getUsername(), user.getOciCfg().getRegion(), user.getArchitecture(), vcn.getDisplayName(), subnet.getDisplayName());
                         }
 
-                        String cloudInitScript = CommonUtils.getPwdShell(user.getRootPassword());
+                        // PASSWORD_ACCESS: 使用新的cloud-init脚本生成方法，支持SSH公钥
+                        String cloudInitScript = CommonUtils.getCloudInitScript(user.getRootPassword(), user.getSshPublicKey());
                         launchInstanceDetails = createLaunchInstanceDetails(
                                 compartmentId, availableDomain,
                                 shape, image,
@@ -234,7 +235,9 @@ public class OracleInstanceFetcher implements Closeable {
                         instanceDetailDTO.setOcpus(user.getOcpus());
                         instanceDetailDTO.setMemory(user.getMemory());
                         instanceDetailDTO.setDisk(user.getDisk() == null ? 50L : user.getDisk());
+                        // PASSWORD_ACCESS: 当只有SSH公钥时，rootPassword可能为空
                         instanceDetailDTO.setRootPassword(user.getRootPassword());
+                        instanceDetailDTO.setSshPublicKey(user.getSshPublicKey());
                         instanceDetailDTO.setShape(shape.getShape());
                         instanceDetailDTO.setInstance(instance);
                         return instanceDetailDTO;

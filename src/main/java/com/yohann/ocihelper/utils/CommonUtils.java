@@ -79,6 +79,20 @@ public class CommonUtils {
                     "磁盘大小（GB）： %s\n" +
                     "数量： %s\n" +
                     "root密码： %s";
+    /**
+     * 开机任务消息模板V2 - 支持SSH公钥认证信息显示
+     * PASSWORD_ACCESS: 此模板的最后一个参数用于显示认证方式信息
+     */
+    public static final String BEGIN_CREATE_MESSAGE_TEMPLATE_V2 =
+            "【开机任务】\n\n用户：[%s] 开始执行开机任务\n" +
+                    "时间： %s\n" +
+                    "Region： %s\n" +
+                    "CPU类型： %s\n" +
+                    "CPU： %s\n" +
+                    "内存（GB）： %s\n" +
+                    "磁盘大小（GB）： %s\n" +
+                    "数量： %s\n" +
+                    "%s";
     public static final String BEGIN_CHANGE_IP_MESSAGE_TEMPLATE =
             "【更换IP任务】\n\n用户：[%s] 开始执行更换公网IP任务\n" +
                     "时间： %s\n" +
@@ -678,76 +692,169 @@ public class CommonUtils {
     }
 
     public static String getPwdShell(String passwd) {
-        return "#cloud-config\n" +
-                "ssh_pwauth: yes\n" +
-                "chpasswd:\n" +
-                "  list: |\n" +
-                "    root:" + passwd + "\n" +
-                "  expire: false\n" +
-                "write_files:\n" +
-                "  - path: /tmp/setup_root_access.sh\n" +
-                "    permissions: '0700'\n" +
-                "    content: |\n" +
-                "      #!/bin/bash\n" +
-                "      \n" +
-                "      # Detect OS\n" +
-                "      if [ -f /etc/os-release ]; then\n" +
-                "        . /etc/os-release\n" +
-                "        OS=$ID\n" +
-                "      else\n" +
-                "        echo \"Cannot detect OS, exiting.\"\n" +
-                "        exit 1\n" +
-                "      fi\n" +
-                "      \n" +
-                "      # Convert to lowercase\n" +
-                "      OS=$(echo \"$OS\" | tr '[:upper:]' '[:lower:]')\n" +
-                "      \n" +
-                "      # Configure SSH\n" +
-                "      sed -i 's/^#\\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config\n" +
-                "      sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config\n" +
-                "      \n" +
-                "      # Ensure PrintMotd is set to yes\n" +
-                "      if grep -q \"^#\\?PrintMotd\" /etc/ssh/sshd_config; then\n" +
-                "        sed -i 's/^#\\?PrintMotd.*/PrintMotd yes/' /etc/ssh/sshd_config\n" +
-                "      else\n" +
-                "        echo \"PrintMotd yes\" >> /etc/ssh/sshd_config\n" +
-                "      fi\n" +
-                "      # Ensure PrintLastLog is set to yes\n" +
-                "      if grep -q \"^#\\?PrintLastLog\" /etc/ssh/sshd_config; then\n" +
-                "        sed -i 's/^#\\?PrintLastLog.*/PrintLastLog yes/' /etc/ssh/sshd_config\n" +
-                "      else\n" +
-                "        echo \"PrintLastLog yes\" >> /etc/ssh/sshd_config\n" +
-                "      fi\n\n" +
-                "      # Restart SSH service\n" +
-                "      if command -v systemctl >/dev/null 2>&1; then\n" +
-                "        systemctl restart sshd\n" +
-                "      else\n" +
-                "        service sshd restart\n" +
-                "      fi\n" +
-                "      \n" +
-                "      # Set up warning message\n" +
-                "      {\n" +
-                "        echo \"🎉 欢迎使用 Y 探长~ 🎉\"\n" +
-                "        echo \"Source code address: https://github.com/Yohann0617/oci-helper\"\n" +
-                "      } | tee /etc/motd\n" +
-                "      \n" +
-                "      # OS-specific configurations\n" +
-                "      case $OS in\n" +
-                "        ubuntu|debian)\n" +
-                "          # Ubuntu/Debian specific commands\n" +
-                "          sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config\n" +
-                "          ;;\n" +
-                "        ol|rhel|centos|almalinux|rocky)\n" +
-                "          # Oracle Linux/RHEL/CentOS/AlmaLinux/Rocky Linux specific commands\n" +
-                "          sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config\n" +
-                "          ;;\n" +
-                "        *)\n" +
-                "          echo \"Unsupported OS: $OS\" >&2\n" +
-                "          ;;\n" +
-                "      esac\n" +
-                "runcmd:\n" +
-                "  - bash /tmp/setup_root_access.sh\n" +
-                "  - rm /tmp/setup_root_access.sh\n";
+        return getCloudInitScript(passwd, null);
+    }
+
+    /**
+     * 验证SSH公钥是否有效
+     * 支持的格式: ssh-rsa, ssh-ed25519, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521
+     * 
+     * @param sshPublicKey SSH公钥字符串
+     * @return true 如果公钥格式有效, 否则 false
+     */
+    public static boolean isValidSshPublicKey(String sshPublicKey) {
+        if (StrUtil.isBlank(sshPublicKey)) {
+            return false;
+        }
+        String trimmed = sshPublicKey.trim();
+        // 支持的SSH公钥类型前缀
+        String[] validPrefixes = {
+            "ssh-rsa ",
+            "ssh-ed25519 ",
+            "ecdsa-sha2-nistp256 ",
+            "ecdsa-sha2-nistp384 ",
+            "ecdsa-sha2-nistp521 ",
+            "ssh-dss "
+        };
+        for (String prefix : validPrefixes) {
+            if (trimmed.startsWith(prefix)) {
+                // 基本验证: 检查是否有base64编码的密钥部分
+                String[] parts = trimmed.split("\\s+");
+                if (parts.length >= 2) {
+                    String keyData = parts[1];
+                    // 简单验证base64格式 (长度至少100字符)
+                    return keyData.length() >= 50;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 生成cloud-init脚本，支持密码和SSH公钥认证
+     * PASSWORD_ACCESS: 此方法生成的脚本用于配置实例访问方式
+     * - 当同时提供密码和SSH公钥时，两种认证方式都可用
+     * - 当只提供SSH公钥时，仅支持SSH密钥认证，密码认证将被禁用
+     * - 当只提供密码时，仅支持密码认证
+     * 
+     * @param passwd root密码 (可为null或空，当提供有效SSH公钥时)
+     * @param sshPublicKey SSH公钥 (可为null或空)
+     * @return cloud-init脚本
+     */
+    public static String getCloudInitScript(String passwd, String sshPublicKey) {
+        boolean hasPassword = StrUtil.isNotBlank(passwd);
+        boolean hasSshKey = isValidSshPublicKey(sshPublicKey);
+        
+        StringBuilder script = new StringBuilder();
+        script.append("#cloud-config\n");
+        
+        // SSH公钥配置
+        if (hasSshKey) {
+            script.append("ssh_authorized_keys:\n");
+            script.append("  - ").append(sshPublicKey.trim()).append("\n");
+        }
+        
+        // PASSWORD_ACCESS: 配置密码认证 - 只有在提供密码时才启用
+        if (hasPassword) {
+            script.append("ssh_pwauth: yes\n");
+            script.append("chpasswd:\n");
+            script.append("  list: |\n");
+            script.append("    root:").append(passwd).append("\n");
+            script.append("  expire: false\n");
+        } else {
+            // PASSWORD_ACCESS: 当只有SSH公钥时，禁用密码认证
+            script.append("ssh_pwauth: no\n");
+        }
+        
+        // 配置SSH设置的脚本
+        String passwordAuthSetting = hasPassword ? "PasswordAuthentication yes" : "PasswordAuthentication no";
+        String permitRootLoginSetting = (hasPassword || hasSshKey) ? "PermitRootLogin yes" : "PermitRootLogin no";
+        // PASSWORD_ACCESS: 当只有SSH公钥时，需要启用 PubkeyAuthentication
+        String pubkeyAuthSetting = hasSshKey ? "PubkeyAuthentication yes" : "";
+        
+        script.append("write_files:\n");
+        script.append("  - path: /tmp/setup_root_access.sh\n");
+        script.append("    permissions: '0700'\n");
+        script.append("    content: |\n");
+        script.append("      #!/bin/bash\n");
+        script.append("      \n");
+        script.append("      # Detect OS\n");
+        script.append("      if [ -f /etc/os-release ]; then\n");
+        script.append("        . /etc/os-release\n");
+        script.append("        OS=$ID\n");
+        script.append("      else\n");
+        script.append("        echo \"Cannot detect OS, exiting.\"\n");
+        script.append("        exit 1\n");
+        script.append("      fi\n");
+        script.append("      \n");
+        script.append("      # Convert to lowercase\n");
+        script.append("      OS=$(echo \"$OS\" | tr '[:upper:]' '[:lower:]')\n");
+        script.append("      \n");
+        script.append("      # Configure SSH\n");
+        // PASSWORD_ACCESS: 根据配置设置密码认证
+        script.append("      sed -i 's/^#\\?PasswordAuthentication.*/").append(passwordAuthSetting).append("/' /etc/ssh/sshd_config\n");
+        script.append("      sed -i 's/^#\\?PermitRootLogin.*/").append(permitRootLoginSetting).append("/' /etc/ssh/sshd_config\n");
+        
+        // PASSWORD_ACCESS: 当使用SSH公钥时，确保公钥认证已启用
+        if (hasSshKey) {
+            script.append("      sed -i 's/^#\\?PubkeyAuthentication.*/").append(pubkeyAuthSetting).append("/' /etc/ssh/sshd_config\n");
+            script.append("      # Ensure PubkeyAuthentication is present\n");
+            script.append("      if ! grep -q \"^PubkeyAuthentication\" /etc/ssh/sshd_config; then\n");
+            script.append("        echo \"").append(pubkeyAuthSetting).append("\" >> /etc/ssh/sshd_config\n");
+            script.append("      fi\n");
+        }
+        
+        script.append("      \n");
+        script.append("      # Ensure PrintMotd is set to yes\n");
+        script.append("      if grep -q \"^#\\?PrintMotd\" /etc/ssh/sshd_config; then\n");
+        script.append("        sed -i 's/^#\\?PrintMotd.*/PrintMotd yes/' /etc/ssh/sshd_config\n");
+        script.append("      else\n");
+        script.append("        echo \"PrintMotd yes\" >> /etc/ssh/sshd_config\n");
+        script.append("      fi\n");
+        script.append("      # Ensure PrintLastLog is set to yes\n");
+        script.append("      if grep -q \"^#\\?PrintLastLog\" /etc/ssh/sshd_config; then\n");
+        script.append("        sed -i 's/^#\\?PrintLastLog.*/PrintLastLog yes/' /etc/ssh/sshd_config\n");
+        script.append("      else\n");
+        script.append("        echo \"PrintLastLog yes\" >> /etc/ssh/sshd_config\n");
+        script.append("      fi\n\n");
+        script.append("      # Restart SSH service\n");
+        script.append("      if command -v systemctl >/dev/null 2>&1; then\n");
+        script.append("        systemctl restart sshd\n");
+        script.append("      else\n");
+        script.append("        service sshd restart\n");
+        script.append("      fi\n");
+        script.append("      \n");
+        script.append("      # Set up warning message\n");
+        script.append("      {\n");
+        script.append("        echo \"🎉 欢迎使用 Y 探长~ 🎉\"\n");
+        script.append("        echo \"Source code address: https://github.com/Yohann0617/oci-helper\"\n");
+        
+        // PASSWORD_ACCESS: 当只有SSH公钥时，在MOTD中提示用户使用SSH密钥登录
+        if (hasSshKey && !hasPassword) {
+            script.append("        echo \"⚠️  此实例仅支持SSH密钥认证，请使用您配置的SSH私钥登录\"\n");
+        }
+        
+        script.append("      } | tee /etc/motd\n");
+        script.append("      \n");
+        script.append("      # OS-specific configurations\n");
+        script.append("      case $OS in\n");
+        script.append("        ubuntu|debian)\n");
+        script.append("          # Ubuntu/Debian specific commands\n");
+        script.append("          sed -i 's/^#\\?PermitRootLogin.*/").append(permitRootLoginSetting).append("/' /etc/ssh/sshd_config\n");
+        script.append("          ;;\n");
+        script.append("        ol|rhel|centos|almalinux|rocky)\n");
+        script.append("          # Oracle Linux/RHEL/CentOS/AlmaLinux/Rocky Linux specific commands\n");
+        script.append("          sed -i 's/^#\\?PermitRootLogin.*/").append(permitRootLoginSetting).append("/' /etc/ssh/sshd_config\n");
+        script.append("          ;;\n");
+        script.append("        *)\n");
+        script.append("          echo \"Unsupported OS: $OS\" >&2\n");
+        script.append("          ;;\n");
+        script.append("      esac\n");
+        script.append("runcmd:\n");
+        script.append("  - bash /tmp/setup_root_access.sh\n");
+        script.append("  - rm /tmp/setup_root_access.sh\n");
+        
+        return script.toString();
     }
 
 }

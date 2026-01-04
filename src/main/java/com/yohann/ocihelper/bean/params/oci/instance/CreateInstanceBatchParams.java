@@ -39,7 +39,15 @@ public class CreateInstanceBatchParams {
         private Integer createNumbers;
         @NotBlank(message = "系统类型不能为空")
         private String operationSystem;
-        @NotBlank(message = "root密码不能为空")
+        /**
+         * root密码 - 当提供有效的SSH公钥时可选
+         * PASSWORD_ACCESS: 当只有SSH公钥时，此字段可为空，实例将仅支持SSH密钥认证
+         */
         private String rootPassword;
+        /**
+         * SSH公钥 - 用于实例的SSH密钥认证
+         * 当提供有效的SSH公钥时，root密码变为可选
+         */
+        private String sshPublicKey;
     }
 }

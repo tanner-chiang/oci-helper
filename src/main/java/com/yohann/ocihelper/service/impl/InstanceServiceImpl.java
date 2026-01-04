@@ -84,6 +84,10 @@ public class InstanceServiceImpl implements IInstanceService {
     @Value("${oci-cfg.boot-broadcast-channel}")
     private String bootBroadcastChannel;
 
+    /**
+     * 开机成功消息模板
+     * PASSWORD_ACCESS: root密码字段可能显示为"无（仅SSH公钥）"当只使用SSH公钥时
+     */
     private static final String LEGACY_MESSAGE_TEMPLATE =
             "【开机任务】 \n\n🎉 用户：[%s] 开机成功 🎉\n" +
                     "时间： %s\n" +
@@ -94,7 +98,7 @@ public class InstanceServiceImpl implements IInstanceService {
                     "磁盘大小（GB）： %s\n" +
                     "Shape： %s\n" +
                     "公网IP： %s\n" +
-                    "root密码： %s\n" +
+                    "%s\n" +
                     "开机次数：%s\n" +
                     "开机时长：%s";
     private static final String CHANNEL_MESSAGE_TEMPLATE =
@@ -153,9 +157,21 @@ public class InstanceServiceImpl implements IInstanceService {
             instanceList.add(instanceDetail);
 
             if (instanceDetail.isSuccess()) {
-                log.info("---------------- 🎉 用户:[{}]开机成功,CPU类型:{},公网IP: {},root密码: {} 🎉 ----------------",
+                // PASSWORD_ACCESS: 构建认证信息，根据密码和SSH公钥情况显示不同内容
+                boolean hasPassword = StrUtil.isNotBlank(instanceDetail.getRootPassword());
+                boolean hasSshKey = CommonUtils.isValidSshPublicKey(instanceDetail.getSshPublicKey());
+                String authInfo;
+                if (hasPassword && hasSshKey) {
+                    authInfo = "root密码： " + instanceDetail.getRootPassword() + "\n认证方式： 密码 + SSH公钥";
+                } else if (hasSshKey) {
+                    authInfo = "认证方式： 仅SSH公钥（无密码）";
+                } else {
+                    authInfo = "root密码： " + instanceDetail.getRootPassword();
+                }
+                
+                log.info("---------------- 🎉 用户:[{}]开机成功,CPU类型:{},公网IP: {},{} 🎉 ----------------",
                         instanceDetail.getUsername(), instanceDetail.getArchitecture(),
-                        instanceDetail.getPublicIp(), instanceDetail.getRootPassword());
+                        instanceDetail.getPublicIp(), hasPassword ? "root密码: " + instanceDetail.getRootPassword() : "SSH公钥认证");
                 String message = String.format(LEGACY_MESSAGE_TEMPLATE,
                         instanceDetail.getUsername(),
                         LocalDateTime.now().format(DateTimeFormatter.ofPattern(DatePattern.NORM_DATETIME_PATTERN)),
@@ -166,7 +182,7 @@ public class InstanceServiceImpl implements IInstanceService {
                         instanceDetail.getDisk(),
                         instanceDetail.getShape(),
                         instanceDetail.getPublicIp(),
-                        instanceDetail.getRootPassword(),
+                        authInfo,
                         currentCount,
                         createTask == null ? "未知" : CommonUtils.getTimeDifference(createTask.getCreateTime())
                 );
