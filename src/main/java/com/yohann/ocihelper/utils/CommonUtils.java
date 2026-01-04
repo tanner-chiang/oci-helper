@@ -707,14 +707,13 @@ public class CommonUtils {
             return false;
         }
         String trimmed = sshPublicKey.trim();
-        // 支持的SSH公钥类型前缀
+        // 支持的SSH公钥类型前缀 (不包括已弃用的ssh-dss)
         String[] validPrefixes = {
             "ssh-rsa ",
             "ssh-ed25519 ",
             "ecdsa-sha2-nistp256 ",
             "ecdsa-sha2-nistp384 ",
-            "ecdsa-sha2-nistp521 ",
-            "ssh-dss "
+            "ecdsa-sha2-nistp521 "
         };
         for (String prefix : validPrefixes) {
             if (trimmed.startsWith(prefix)) {
@@ -722,7 +721,7 @@ public class CommonUtils {
                 String[] parts = trimmed.split("\\s+");
                 if (parts.length >= 2) {
                     String keyData = parts[1];
-                    // 简单验证base64格式 (长度至少100字符)
+                    // 简单验证base64格式 (长度至少50字符)
                     return keyData.length() >= 50;
                 }
             }

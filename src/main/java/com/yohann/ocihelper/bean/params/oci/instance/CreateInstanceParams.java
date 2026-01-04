@@ -35,11 +35,13 @@ public class CreateInstanceParams {
     /**
      * root密码 - 当提供有效的SSH公钥时可选
      * PASSWORD_ACCESS: 当只有SSH公钥时，此字段可为空，实例将仅支持SSH密钥认证
+     * 注意: rootPassword和sshPublicKey至少需要提供一个，此验证在OciServiceImpl.createInstance()中进行
      */
     private String rootPassword;
     /**
      * SSH公钥 - 用于实例的SSH密钥认证
      * 当提供有效的SSH公钥时，root密码变为可选
+     * 注意: rootPassword和sshPublicKey至少需要提供一个，此验证在OciServiceImpl.createInstance()中进行
      */
     private String sshPublicKey;
 
