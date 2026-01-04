@@ -204,6 +204,14 @@ public class OciServiceImpl implements IOciService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void createInstance(CreateInstanceParams params) {
+        // PASSWORD_ACCESS: 验证密码或SSH公钥至少提供一个
+        boolean hasPassword = StrUtil.isNotBlank(params.getRootPassword());
+        boolean hasSshKey = CommonUtils.isValidSshPublicKey(params.getSshPublicKey());
+        
+        if (!hasPassword && !hasSshKey) {
+            throw new OciException(-1, "必须提供root密码或有效的SSH公钥");
+        }
+        
         String taskId = IdUtil.randomUUID();
         OciUser ociUser = userService.getById(params.getUserId());
         OciCreateTask ociCreateTask = OciCreateTask.builder()
@@ -217,6 +225,7 @@ public class OciServiceImpl implements IOciService {
                 .createNumbers(params.getCreateNumbers())
                 .operationSystem(params.getOperationSystem())
                 .rootPassword(params.getRootPassword())
+                .sshPublicKey(params.getSshPublicKey())
                 .operationSystem(params.getOperationSystem())
                 .build();
         createTaskService.save(ociCreateTask);
@@ -238,12 +247,24 @@ public class OciServiceImpl implements IOciService {
                 .createNumbers(params.getCreateNumbers())
                 .operationSystem(params.getOperationSystem())
                 .rootPassword(params.getRootPassword())
+                .sshPublicKey(params.getSshPublicKey())
                 .joinChannelBroadcast(params.isJoinChannelBroadcast())
                 .build();
         addTask(CommonUtils.CREATE_TASK_PREFIX + taskId, () ->
                         execCreate(sysUserDTO, sysService, instanceService, createTaskService),
                 0, params.getInterval(), TimeUnit.SECONDS);
-        String beginCreateMsg = String.format(CommonUtils.BEGIN_CREATE_MESSAGE_TEMPLATE,
+        
+        // PASSWORD_ACCESS: 构建开机任务消息，根据认证方式显示不同内容
+        String authInfo;
+        if (hasPassword && hasSshKey) {
+            authInfo = "root密码： " + params.getRootPassword() + "\n认证方式： 密码 + SSH公钥";
+        } else if (hasSshKey) {
+            authInfo = "认证方式： 仅SSH公钥（无密码）";
+        } else {
+            authInfo = "root密码： " + params.getRootPassword();
+        }
+        
+        String beginCreateMsg = String.format(CommonUtils.BEGIN_CREATE_MESSAGE_TEMPLATE_V2,
                 ociUser.getUsername(),
                 LocalDateTime.now().format(DateTimeFormatter.ofPattern(DatePattern.NORM_DATETIME_PATTERN)),
                 ociUser.getOciRegion(),
@@ -252,7 +273,7 @@ public class OciServiceImpl implements IOciService {
                 Float.parseFloat(params.getMemory()),
                 Long.valueOf(params.getDisk()),
                 params.getCreateNumbers(),
-                params.getRootPassword());
+                authInfo);
 
         sysService.sendMessage(beginCreateMsg);
     }

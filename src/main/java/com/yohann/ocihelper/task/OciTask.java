@@ -188,7 +188,9 @@ public class OciTask implements ApplicationRunner {
                                         .interval(Long.valueOf(task.getInterval()))
                                         .createNumbers(task.getCreateNumbers())
                                         .operationSystem(task.getOperationSystem())
+                                        // PASSWORD_ACCESS: 支持SSH公钥认证
                                         .rootPassword(task.getRootPassword())
+                                        .sshPublicKey(task.getSshPublicKey())
                                         .build();
                                 addTask(CommonUtils.CREATE_TASK_PREFIX + task.getId(), () ->
                                                 execCreate(sysUserDTO, sysService, instanceService, createTaskService),

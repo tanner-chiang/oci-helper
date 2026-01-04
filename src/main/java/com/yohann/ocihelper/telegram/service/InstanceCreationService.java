@@ -85,9 +85,14 @@ public class InstanceCreationService {
             throw new RuntimeException("配置不存在，用户ID: " + userId);
         }
         
-        // Generate random password if not provided
+        // PASSWORD_ACCESS: 验证密码或SSH公钥至少提供一个
         String password = plan.getRootPassword();
-        if (password == null || password.isEmpty()) {
+        String sshPublicKey = plan.getSshPublicKey();
+        boolean hasPassword = password != null && !password.isEmpty();
+        boolean hasSshKey = sshPublicKey != null && !sshPublicKey.isEmpty();
+        
+        // 如果两者都没有提供，生成随机密码
+        if (!hasPassword && !hasSshKey) {
             password = RandomUtil.randomString(16);
             log.debug("Generated random password for instance creation");
         }
@@ -103,12 +108,13 @@ public class InstanceCreationService {
         params.setCreateNumbers(plan.getCreateNumbers());
         params.setOperationSystem(plan.getOperationSystem());
         params.setRootPassword(password);
+        params.setSshPublicKey(sshPublicKey);
         params.setJoinChannelBroadcast(plan.isJoinChannelBroadcast());
         
         // Call IOciService.createInstance method to create instance task
         ociService.createInstance(params);
         
-        log.info("Successfully called IOciService.createInstance: userId={}, ocpus={}, memory={}, disk={}, arch={}, joinChannelBroadcast={}", 
-                 userId, plan.getOcpus(), plan.getMemory(), plan.getDisk(), plan.getArchitecture(), plan.isJoinChannelBroadcast());
+        log.info("Successfully called IOciService.createInstance: userId={}, ocpus={}, memory={}, disk={}, arch={}, hasSshKey={}, joinChannelBroadcast={}", 
+                 userId, plan.getOcpus(), plan.getMemory(), plan.getDisk(), plan.getArchitecture(), hasSshKey, plan.isJoinChannelBroadcast());
     }
 }

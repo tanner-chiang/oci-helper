@@ -997,7 +997,9 @@ public class SysServiceImpl implements ISysService {
                                     .interval(Long.valueOf(task.getInterval()))
                                     .createNumbers(task.getCreateNumbers())
                                     .operationSystem(task.getOperationSystem())
+                                    // PASSWORD_ACCESS: 支持SSH公钥认证
                                     .rootPassword(task.getRootPassword())
+                                    .sshPublicKey(task.getSshPublicKey())
                                     .build();
                             stopTask(CommonUtils.CREATE_TASK_PREFIX + task.getId());
                             addTask(CommonUtils.CREATE_TASK_PREFIX + task.getId(), () ->
